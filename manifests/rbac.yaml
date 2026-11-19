@@ -1,0 +1,132 @@
+# Identity for cluster-level policy checks.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-bench-policies
+  namespace: kube-bench
+---
+# Read workload and RBAC settings across the cluster for policy checks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-bench-policies
+rules:
+  # Inspect Pod settings and ServiceAccount token mounting.
+  - apiGroups: [""]
+    resources:
+      - pods
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+  # Inspect Role and ClusterRole rules.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - clusterroles
+    verbs:
+      - get
+      - list
+  # Enumerate ClusterRoleBindings to inspect cluster-admin assignments.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterrolebindings
+    verbs:
+      - list
+  # Allow the named identity used by upstream authorization checks.
+  - apiGroups: [""]
+    resources:
+      - users
+    resourceNames:
+      - system:authenticated
+    verbs:
+      - impersonate
+---
+# Grant policy inspection permissions to the policies ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-bench-policies
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-bench-policies
+subjects:
+  - kind: ServiceAccount
+    name: kube-bench-policies
+    namespace: kube-bench
+---
+# Identity for node discovery, scan orchestration, and report collection.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-bench-orchestrator
+  namespace: kube-bench
+---
+# Discover nodes and their control-plane labels cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-bench-orchestrator
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs:
+      - list
+---
+# Grant node discovery permissions to the orchestrator ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-bench-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-bench-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: kube-bench-orchestrator
+    namespace: kube-bench
+---
+# Create scan Jobs and read their logs only in the kube-bench namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-bench-orchestrator
+  namespace: kube-bench
+rules:
+  # Create scans and poll Job status; the TTL controller handles cleanup.
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs:
+      - get
+      - create
+  # Locate the Pods belonging to scan Jobs.
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - list
+  # Read scanner output and JSON reports.
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs:
+      - get
+---
+# Grant namespace-scoped scan permissions to the orchestrator ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-bench-orchestrator
+  namespace: kube-bench
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-bench-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: kube-bench-orchestrator
+    namespace: kube-bench

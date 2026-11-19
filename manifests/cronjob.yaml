@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kube-bench
+  namespace: kube-bench
+spec:
+  # Run weekly on Sunday at 04:00 in the controller manager's time zone.
+  schedule: "0 4 * * 0"
+  # Skip scheduled runs while a previous audit is still active.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  # Parent Job: orchestrate scans and collect their reports.
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: kube-bench-orchestrator
+          restartPolicy: Never
+          containers:
+            - name: orchestrator
+              # Filled by Kustomize from KUBE_BENCH_IMAGE in config.env.
+              image: kube-bench-image
+              # Load scan settings from the ConfigMap generated from config.env.
+              envFrom:
+                - configMapRef:
+                    name: kube-bench-config
+              # Restrict the orchestrator's Linux privileges.
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              # Orchestrator resource budget; scanner resources are configured separately.
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              # Run the script mounted from the generated ConfigMap.
+              command:
+                - /bin/sh
+                - /scripts/orchestrator.sh
+              volumeMounts:
+                - name: orchestrator-script
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: orchestrator-script
+              configMap:
+                name: kube-bench-orchestrator-script

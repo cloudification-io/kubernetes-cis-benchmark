@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - cronjob.yaml
+
+configMapGenerator:
+  # Keep each audit tied to its original settings and scanner image.
+  - name: kube-bench-config
+    namespace: kube-bench
+    envs:
+      - config.env
+  # Version the mounted script so running audits keep their existing code.
+  - name: kube-bench-orchestrator-script
+    namespace: kube-bench
+    files:
+      - orchestrator.sh
+
+# Set the parent image from the same ConfigMap value passed to the scanners.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: kube-bench-config
+      fieldPath: data.KUBE_BENCH_IMAGE
+    targets:
+      - select:
+          kind: CronJob
+          name: kube-bench
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=orchestrator].image

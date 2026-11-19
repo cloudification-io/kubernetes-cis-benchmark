@@ -6,6 +6,21 @@ The example uses standard Kubernetes resources and Kustomize. It requires no S3 
 
 **Validation status:** installation, manual benchmark overrides, scheduled execution, JSON export, accelerated TTL cleanup, and uninstallation have been exercised on a local kind cluster running Kubernetes `v1.35.8` on Linux arm64, with one control-plane node and two workers. Successful runs used a manual `cis-1.12` override and each produced seven valid JSON reports. Automatic selection was checked against the bundled image mapping with supplied version fixtures; a real automatic run on `v1.35.8` confirmed rejection before scan Jobs because that version has no exact mapping. Shell syntax and manifest generation have also been checked locally.
 
+## Relationship to the blog article
+
+This repository is a simplified companion to [Kubernetes Security Audit with kube-bench: Automating CIS Benchmarking with Jobs and Ceph S3](https://cloudification.io/cloud-blog/kubernetes-security-audit-with-kube-bench-automating-cis-benchmarking-with-jobs-and-ceph-s3/). The article describes a broader implementation with Ceph S3 storage and GitOps. This public example demonstrates the core audit workflow using standard Kubernetes resources.
+
+| Area | Implementation in the article | This repository |
+| --- | --- | --- |
+| Report collection | A scanner init container writes `/reports/report.json`; an uploader sends it to Ceph S3 | One scanner container writes `/tmp/report.json`; the orchestrator validates and collects reports in its logs for local export |
+| Report retention | A configured number of audit runs is retained in S3 | Child Job TTL and CronJob history limits clean up Kubernetes resources; reports have no persistent store |
+| Deployment | Argo CD manages the audit resources through GitOps | Apply the resources directly with `kubectl apply -k manifests/` |
+| Benchmark selection | The original setup explicitly selects `cis-1.12` | The default `auto` setting uses the image's exact upstream mapping; `config.env` supports a manual override |
+
+For this example, use the commands, paths, configuration defaults, and [benchmark compatibility information](#benchmark-compatibility) in this README together with the files under [`manifests/`](manifests/). The orchestrator includes bounded API polling and report validation, so some shell snippets differ from those in the article.
+
+The six-node validation results in the article describe the original setup. Validation of this repository is reported separately above.
+
 ## How it works
 
 The `kube-bench` CronJob runs [`manifests/orchestrator.sh`](manifests/orchestrator.sh), mounted from a ConfigMap. The script discovers nodes through the Kubernetes API, selects a benchmark, and creates one scan Job at a time.
